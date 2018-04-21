@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Cosplay Scale Tool</title>
+<style>
+body {
+    background-color: linen;
+    text-align: center;
+    font-family: sans-serif;
+    color: #3f3830;
+}
+
+a {
+    color: #007562;
+    text-decoration: none;
+}
+
+a:hover, a:focus {
+    color: #659b91;
+    text-decoration: underline;
+}
+
+h1 {
+    color: maroon;
+    margin-left: 40px;
+}
+
+#canvas {
+    cursor: crosshair;
+    text-align:left;
+}
+
+circle {
+    cursor: grab;
+}
+
+
+#chart {
+    display: inline-block
+}
+
+#faq {
+    text-align: left;
+}
+</style>
+
+        <script src="raphael.min.js"></script>
+        <script
+              src="https://code.jquery.com/jquery-2.2.4.min.js"
+              integrity="sha256-BbhdlvQf/xTY9gja0Dq3HiwQF8LaCRTXxZKRutelT44="
+              crossorigin="anonymous"></script>
+        <script>
+            var real_len = 10;
+            var factor;
+            var baseline;
+            $(function () {
+                var paper = Raphael("canvas", 1024, 1024);
+                var paper_pos = $("#canvas").position();
+                var body_pos = $("body").position();
+                var paper_x = paper_pos.left;
+                var paper_y = paper_pos.top;
+                var lines = paper.set();
+                var canvas = paper.rect(0, 0, 1024, 1024);
+                var drag_ctrl = {fill: "#fff", stroke: "#000", r : 3, "fill-opacity" : 0.2};
+                canvas.attr({fill: "#eee", "fill-opacity" : 0.1});
+                var bg_image;
+
+                $("#length").val(real_len);
+
+                function make_line(x1, y1, x2, y2) {
+                    var line = [["M", x1, y1], ["L", x2, y2]];
+                    
+                    var controls = paper.set(
+                        paper.circle(x1, y1, 5).attr(drag_ctrl),
+                        paper.circle(x2, y2, 5).attr(drag_ctrl) 
+                        );
+                    var path = paper.path(line).attr({"stroke-width": 1});
+                    path.start = controls[0];
+                    path.end = controls[1];
+                    path.clear_line = function() {
+                        this.start.remove();
+                        this.end.remove();
+                        if (this.len) {
+                            this.len.remove();
+                        }
+                        this.remove();
+                    };
+
+                    if (!baseline) {
+                        baseline = path;
+                        path.attr({stroke: '#000', "stroke-width": 2});
+                        factor = baseline.getTotalLength()/real_len;
+                    } else {
+                        lines.push(path);
+                        var color = Raphael.getColor();
+                        path.attr({stroke: color});
+                        var length = calc_real(path);
+                        $("#chart").append(`<tr class="line_row" id="${path.id}_row"><td style="height:1em; width: 1em; background-color:${color}; display: inline-block;"> </td><td><input type="text"></input><td id="${path.id}_val">${length}</td><td><a id="${path.id}" class="delete" href="#">x</a></td></tr>`);
+                        var midpoint = path.getPointAtLength(path.getTotalLength()/2);
+                        path.len = paper.text(midpoint.x, midpoint.y, length);
+                        refresh_del();
+                    };
+
+                    controls[0].update = function (dx, dy) {
+                        var X = this.attr("cx") + dx,
+                            Y = this.attr("cy") + dy;
+                        this.attr({cx: X, cy: Y});
+                        line[0][1] = X;
+                        line[0][2] = Y;
+                        path.attr({"path" : line});
+                        if (path.id == baseline.id) {
+                            factor = baseline.getTotalLength()/real_len;
+                            recalc_all();
+                        } else {
+                            $("#" + path.id + "_val").text(calc_real(path));
+                        }
+                    };
+
+                    controls[1].update = function (dx, dy) {
+                        var X = this.attr("cx") + dx,
+                            Y = this.attr("cy") + dy;
+                        this.attr({cx: X, cy: Y});
+                        line[1][1] = X;
+                        line[1][2] = Y;
+                        path.attr({"path" : line});
+                        if (path.id == baseline.id) {
+                            factor = baseline.getTotalLength()/real_len;
+                            recalc_all();
+                        } else {
+                            $("#" + path.id + "_val").text(calc_real(path));
+                        }
+                    };
+
+                    controls.drag(move, start, up);
+
+                    controls.mouseover(function() {
+                        this.attr({fill: "#000", r : 6, "fill-opacity" : 1});
+                    });
+
+                    controls.mouseout(function() {
+                        this.attr(drag_ctrl);
+                    });
+                    
+                }
+
+                function move(dx, dy) {
+                    this.update(dx - (this.dx || 0), dy - (this.dy || 0));
+                    this.dx = dx;
+                    this.dy = dy;
+                    
+                }
+
+                function start() {
+                    this.dx = this.dy = 0;
+                }
+
+                function up() {
+                     this.dx = this.dy = 0;
+                }
+                
+
+                $("#length").on("blur", function() { 
+                    real_len = $("#length").val();
+                    if (baseline) {
+                        factor = baseline.getTotalLength()/real_len;
+                        recalc_all();
+                    };
+                });
+
+                    var line_start = function (x, y) {
+                            x1 = x - paper_x;
+                            y1 = y - paper_y;
+                            tmp_line = paper.path(`M${x1},${y1}L${x1},${y1}`);
+                            tmp_line.attr({stroke: '#000', "stroke-width": 1});
+                        },
+                        line_move = function (dx, dy, x, y) {
+                            x2 = x - paper_x;
+                            y2 = y - paper_y;
+                            tmp_line.attr({"path" : `M${x1},${y1}L${x2},${y2}`});
+                            },
+                        line_end = function () {
+                            make_line(x1, y1, x2, y2);
+                            tmp_line.remove();
+                        };
+
+                        canvas.drag(line_move, line_start, line_end);
+                function refresh_del(){
+                    $(".delete").off("click");
+                    $(".delete").click(function(evt) {
+                        var el_id = this.id;
+                        evt.stopPropagation();
+                        paper.getById(el_id).clear_line();
+                        $("#" + el_id + "_row").remove();
+                        return false;
+                    });
+                }
+
+        $("#fileupload").change(function () {
+        $("#dvPreview").html("");
+        var regex = /^([a-zA-Z0-9\s_\\.\-:])+(.jpg|.jpeg|.gif|.png|.bmp)$/;
+        if (regex.test($(this).val().toLowerCase())) {
+                if (typeof (FileReader) != "undefined") {
+                    $("#dvPreview").show();
+                    $("#dvPreview").append("<img />");
+                    var reader = new FileReader();
+                    reader.onload = function (e) {
+                        var img = new Image();
+                        img.onload = function() {
+                            var w = img.naturalWidth,
+                            h = img.naturalHeight;
+                            bg_image = paper.image(e.target.result, 0, 0, w, h).toBack();
+                        };
+                        img.src = e.target.result; 
+                        
+                    }
+                    reader.readAsDataURL($(this)[0].files[0]);
+                } else {
+                    alert("This browser does not support FileReader.");
+                }
+        
+        } else {
+            alert("Please upload a valid image file.");
+        }
+    });
+
+        function calc_real(el) {
+            return (el.getTotalLength() / factor).toFixed(3);
+
+        }
+
+        function recalc_all() {
+                console.log(lines);
+                lines.forEach(function(line) {
+                    console.log(this);
+                $("#" + line.id + "_val").text(calc_real(line));
+            });
+        }
+
+        $("#lighten").click(function() {
+            var alpha = parseFloat(canvas.attr("fill-opacity"));
+            canvas.attr({"fill-opacity" : (alpha + 0.1)});
+        });
+
+        $("#darken").click(function() {
+            var alpha = parseFloat(canvas.attr("fill-opacity"));
+            canvas.attr({"fill-opacity" : (alpha - 0.1)});
+        });
+
+        $("#reset").click(function(){
+            if(bg_image) {
+                bg_image.remove(); }
+            lines.forEach(function(line){ 
+                line.clear_line();
+            });
+            baseline.clear_line();
+            baseline = null;
+            $('.line_row').remove();
+
+        });
+
+        $("#download").click(function() {
+          var svg = document.getElementsByTagName('svg')[0];
+          console.log(svg);
+          var ctx = document.getElementById("dl").getContext('2d');
+          var data = (new XMLSerializer()).serializeToString(svg);
+          var DOMURL = window.URL || window.webkitURL || window;
+
+          var img = new Image();
+          var svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
+          var url = DOMURL.createObjectURL(svgBlob);
+
+            var evt = new MouseEvent('click', {
+            view: window,
+            bubbles: false,
+            cancelable: true
+          });
+
+          img.onload = function () {
+            ctx.drawImage(img, 0, 0);
+            DOMURL.revokeObjectURL(url);
+
+            var imgURI = document.getElementById("dl")
+                .toDataURL('image/png')
+                .replace('image/png', 'image/octet-stream');
+
+              var a = document.createElement('a');
+              a.setAttribute('download', 'scale_image.png');
+              a.setAttribute('href', imgURI);
+              a.setAttribute('target', '_blank');
+
+              a.dispatchEvent(evt);
+          };
+
+          img.src = url;
+
+        })
+
+                }
+            );
+        </script>
+    </head>
+    <body>
+        <div id="canvas"></div>
+        <canvas id="dl" style="display:none;" width="800" height="800"></canvas>
+        <input type="button" id="lighten" value="Lighten image"></input><input type="button" id="darken" value="Darken image"></input>
+        <input type="button" id="reset" value="Clear"></input>
+        <input type="file" accept="image/*" id="fileupload"></input>
+        <button id="download">Save PNG</button>
+        <br>How long should the baseline be in real units?<input type="text" id="length" value="10"></input>
+        <br><table id="chart"><tr><td></td><td>Name</td><td>Scaled length</td><td>Del?</td></tr></table>
+    <div id="faq">
+    <h4>FAQ/Credits</h4>
+
+    This app is built in <a href="http://jquery.com/">jQuery</a>, using the <a href="http://dmitrybaranovskiy.github.io/raphael">Raphaël</a> library for drawing. It owes a debt of inspiration to <a href="http://www.nifegun.com/cosplay">this cosplay scale tool</a> (but none of it's code). If you're interested in the source for this, you can find it <a href="FIXME">here on Github</a>.
+
+    <h4>Known Issues</h4>
+    <ul>
+    <li>Doesn't work properly in IE. IE doesn't support some of the HTML5 features necessary to run this app, and I don't have the energy to hack together workarounds. Sorry, IE users.</li>
+    <li>Not sure how well it handles mobile/forms of input that aren't mouse-drags. Testing and possibly remedies to come.</li>
+    <li>Doesn't handle very large images very well. In progress.</li>
+    <li>Saved image doesn't include the labeled table. In progress.</li>
+    </ul>
+
+    <h4>How do I use this?</h4>
+    <ol>
+    <li>Load an image.</li>
+    <li>Draw your baseline - this is the line that determines how much to scale all the other calculations. Height or chest-width are good choices on full-body shots, while palm-width can be good for close-ups.</li>
+    <li>Enter how long this element should be in real life (for instance, your height/chest-width/palm-width, or that of the person you're trying to scale things to). Units doesn't matter - the math works out the same no matter what, and whatever length unit you put in (inches, cm, etc) is what you'll get back.</li>
+    <li>Start drawing more lines for stuff you want the dimensions on.</li>
+    <li>When you're done, click save to download a copy of the image with your lines and measurements on it!</li>
+</ol>
+<h4>I only have really tiny images!</h4>
+You can try resizing it with a smart rescaler like <a href="http://waifu2x.udp.jp/">waifu2x</a> (work-safe, despite the unfortunate name).  While I'd like to provide a version of that here, it requires better hardware than my webserver has, unfortunately.
+<h4>I closed my browser/tab and everything went away!</h4>
+Nature of the (Javascript) beast, unfortunately - the image and all the calculated measurements only exist in your browser window. This means you don't actually have to have an internet connection to use it (once the page is loaded, anyway), but if the window goes away, so does the data. I might add some sort of serialiation so you can import an already-started project, but it's not on the radar right now.
+</div>
+    </body>
+</html>
